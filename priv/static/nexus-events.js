@@ -247,6 +247,17 @@
           React.createElement("span", null, event.location)
         ),
 
+        // Description — only shown if present
+        event.description && React.createElement("div", {
+          style: {
+            fontSize: "13px",
+            color: "var(--t2)",
+            lineHeight: 1.5,
+            marginTop: "6px",
+            marginBottom: "4px",
+          }
+        }, event.description),
+
         // RSVP row — only shown if rsvp_enabled and not cancelled
         event.rsvp_enabled && !isCancelled && React.createElement("div", {
           style: {
