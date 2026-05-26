@@ -1289,8 +1289,224 @@
   // Admin panel — Stage 9
   // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+  // AdminEventsView — Events tab content for the admin panel
+  // Fetches events server-side, shows Upcoming/Past sort pills,
+  // supports cancel and delete actions.
+  // Component receives NO props — rendered via React.createElement(component, null)
+  // per AdminExtensions.jsx line 1046.
+  // ---------------------------------------------------------------------------
+
+  function AdminEventsView() {
+    var { toast } = window.NexusComponents;
+    var [filter,   setFilter]   = useState("upcoming");
+    var [events,   setEvents]   = useState([]);
+    var [loading,  setLoading]  = useState(true);
+    var [actionId, setActionId] = useState(null); // event id with pending action
+
+    function loadEvents(f) {
+      setLoading(true);
+      extFetch("/events?filter=" + f).then(function (data) {
+        if (data && data.events) setEvents(data.events);
+        setLoading(false);
+      });
+    }
+
+    useEffect(function () {
+      loadEvents(filter);
+    }, []);
+
+    function switchFilter(f) {
+      setFilter(f);
+      loadEvents(f);
+    }
+
+    function handleCancel(event) {
+      if (!window.confirm('Cancel "' + event.title + '"? All RSVPs will be notified.')) return;
+      setActionId(event.id);
+      extFetch("/events/" + event.id + "/cancel", { method: "POST" })
+        .then(function (data) {
+          if (data && data.event) {
+            toast("Event cancelled.");
+            loadEvents(filter);
+          } else {
+            toast("Could not cancel event.", "err");
+          }
+        })
+        .finally(function () { setActionId(null); });
+    }
+
+    function handleDelete(event) {
+      if (!window.confirm('Delete "' + event.title + '"? This cannot be undone.')) return;
+      setActionId(event.id);
+      extFetch("/events/" + event.id, { method: "DELETE" })
+        .then(function (data) {
+          if (data && data.ok) {
+            toast("Event deleted.");
+            loadEvents(filter);
+          } else {
+            toast("Could not delete event.", "err");
+          }
+        })
+        .finally(function () { setActionId(null); });
+    }
+
+    var pillBase = {
+      fontSize: "12px", padding: "5px 14px", borderRadius: "20px",
+      border: "none", fontFamily: "inherit", cursor: "pointer",
+      transition: "all 0.1s",
+    };
+
+    return React.createElement("div", { style: { paddingTop: "4px" } },
+
+      // Sort pills
+      React.createElement("div", {
+        style: { display: "flex", gap: "6px", marginBottom: "16px" }
+      },
+        ["upcoming", "past"].map(function (f) {
+          var active = filter === f;
+          return React.createElement("button", {
+            key: f,
+            onClick: function () { switchFilter(f); },
+            style: Object.assign({}, pillBase, {
+              background: active ? "var(--ac-bg)" : "rgba(255,255,255,0.05)",
+              color: active ? "var(--ac-text)" : "var(--t3)",
+              border: active ? "0.5px solid var(--ac-border)" : "0.5px solid transparent",
+            }),
+          }, f.charAt(0).toUpperCase() + f.slice(1));
+        })
+      ),
+
+      // Loading state
+      loading && React.createElement("div", {
+        style: { padding: "32px 0", textAlign: "center", color: "var(--t4)", fontSize: "13px" }
+      },
+        React.createElement("i", { className: "fa-solid fa-spinner fa-spin", style: { marginRight: "8px" }, "aria-hidden": "true" }),
+        "Loading…"
+      ),
+
+      // Empty state
+      !loading && events.length === 0 && React.createElement("div", {
+        style: { padding: "32px 0", textAlign: "center", color: "var(--t4)", fontSize: "13px" }
+      },
+        filter === "upcoming"
+          ? "No upcoming events."
+          : "No past events."
+      ),
+
+      // Events table
+      !loading && events.length > 0 && React.createElement("div", {
+        style: { display: "flex", flexDirection: "column", gap: "6px" }
+      },
+        events.map(function (ev) {
+          var isCancelled = ev.status === "cancelled";
+          var isPending   = actionId === ev.id;
+
+          return React.createElement("div", {
+            key: ev.id,
+            style: {
+              display: "flex", alignItems: "center", gap: "12px",
+              padding: "12px 14px",
+              background: "var(--s1)",
+              border: "0.5px solid var(--b1)",
+              borderRadius: "10px",
+              opacity: isCancelled ? 0.65 : 1,
+            }
+          },
+
+            // Status dot
+            React.createElement("div", {
+              style: {
+                width: "8px", height: "8px", borderRadius: "50%", flexShrink: 0,
+                background: isCancelled ? "var(--red)" : "var(--green)",
+              }
+            }),
+
+            // Event info
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+              React.createElement("div", {
+                style: {
+                  fontSize: "13px", fontWeight: 500, color: "var(--t1)",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }
+              }, ev.title),
+              React.createElement("div", {
+                style: { fontSize: "11px", color: "var(--t3)", marginTop: "2px" }
+              },
+                formatShortDate(ev.start_at),
+                " · ",
+                formatTime(ev.start_at),
+                isCancelled && React.createElement("span", {
+                  style: { marginLeft: "8px", color: "var(--red)" }
+                }, "Cancelled")
+              )
+            ),
+
+            // RSVP count
+            React.createElement("div", {
+              style: { fontSize: "12px", color: "var(--t3)", flexShrink: 0 }
+            },
+              React.createElement("i", { className: "fa-solid fa-users", style: { marginRight: "4px", fontSize: "11px" }, "aria-hidden": "true" }),
+              ev.attending_count !== undefined ? ev.attending_count : "—"
+            ),
+
+            // Actions
+            React.createElement("div", {
+              style: { display: "flex", gap: "6px", flexShrink: 0 }
+            },
+              // Cancel — only for upcoming events
+              !isCancelled && filter === "upcoming" && React.createElement("button", {
+                onClick: function () { handleCancel(ev); },
+                disabled: isPending,
+                style: {
+                  fontSize: "11px", padding: "4px 10px", borderRadius: "6px",
+                  background: "none", border: "0.5px solid rgba(255,255,255,0.1)",
+                  color: "var(--t3)", cursor: isPending ? "wait" : "pointer",
+                  fontFamily: "inherit",
+                },
+              }, isPending ? "…" : "Cancel"),
+
+              // Delete
+              React.createElement("button", {
+                onClick: function () { handleDelete(ev); },
+                disabled: isPending,
+                style: {
+                  fontSize: "11px", padding: "4px 10px", borderRadius: "6px",
+                  background: "rgba(248,113,113,0.1)",
+                  border: "0.5px solid rgba(248,113,113,0.2)",
+                  color: "var(--red)", cursor: isPending ? "wait" : "pointer",
+                  fontFamily: "inherit",
+                },
+              }, isPending ? "…" : "Delete")
+            )
+          );
+        })
+      )
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // AdminPanelComponent — registered via registerAdminPanel
+  // Uses TabbedPanel with a single Events tab.
+  // Settings are handled by Nexus's auto-generated fallback form which renders
+  // below this panel from settings_schema (confirmed in AdminExtensions.jsx).
+  // Guide §9.4: "don't reach for these templates just to render settings_schema —
+  // the host already does that automatically via its fallback form."
+  // ---------------------------------------------------------------------------
+
   function AdminPanelComponent() {
-    return null; // Stage 9
+    var { TabbedPanel } = window.NexusExtensionTemplates;
+
+    return React.createElement(TabbedPanel, {
+      tabs: [
+        {
+          key:    "events",
+          label:  "Events",
+          icon:   "fa-calendar",
+          render: function () { return React.createElement(AdminEventsView); },
+        },
+      ],
+    });
   }
 
   // ---------------------------------------------------------------------------
