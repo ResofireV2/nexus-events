@@ -50,7 +50,7 @@ defmodule NexusEvents do
   @impl true
   def routes do
     [
-      {"/api", NexusEvents.ApiRouter, []}
+      {"/", NexusEvents.ApiRouter, []}
     ]
   end
 
