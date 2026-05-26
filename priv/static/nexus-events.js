@@ -1108,7 +1108,6 @@
       return formatQuarter(qYear, quarter);
     }
 
-    try {
     return React.createElement("div", { style: { paddingTop: "20px", paddingBottom: "40px" } },
 
       // ── Calendar header ────────────────────────────────────────────────────
@@ -1187,7 +1186,15 @@
             className: "btn-primary",
             style: { fontSize: "12px", padding: "7px 14px", display: "flex", alignItems: "center", gap: "6px" },
             onClick: function () {
-              // Stage 8: open CreateEventModal
+              mountCreateModal({
+                currentUser: currentUser,
+                onCreated: function (event) {
+                  // Re-fetch events to show the new one immediately
+                  extFetch("/events?filter=upcoming").then(function (data) {
+                    if (data && data.events) setEvents(data.events);
+                  });
+                },
+              });
             },
           },
             React.createElement("i", { className: "fa-solid fa-plus", style: { fontSize: "11px" }, "aria-hidden": "true" }),
@@ -1229,12 +1236,6 @@
         onClose: function () { setModalEvent(null); },
       })
     );
-    } catch(err) {
-      console.error("[NexusEvents] CalendarPage crashed:", err);
-      return React.createElement("div", { style: { padding: "24px", color: "var(--red)", fontSize: "13px" } },
-        "Calendar error: " + (err && err.message || String(err))
-      );
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1293,6 +1294,392 @@
   }
 
   // ---------------------------------------------------------------------------
+  // uploadImage — uses the Nexus upload endpoint per guide §9.15
+  // POST /api/v1/uploads/ext/:slug — requires Bearer token + multipart/form-data
+  // Do NOT set Content-Type manually — browser sets the multipart boundary.
+  // ---------------------------------------------------------------------------
+
+  function uploadImage(file) {
+    var token = localStorage.getItem("nexus_token");
+    var body  = new FormData();
+    body.append("file", file);
+    body.append("type", "extension_image");
+
+    return fetch("/api/v1/uploads/ext/" + SLUG, {
+      method:  "POST",
+      headers: { "Authorization": "Bearer " + token },
+      body:    body,
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+        return data;
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // CreateEventModal
+  // Mounted into a portal div on document.body via ReactDOM.createRoot.
+  // This is necessary because onClick on a toolbar button is a plain function
+  // call — not a React render context — so we cannot use React state directly.
+  // Per guide §9.7: onClick receives {attach, currentUser, context}.
+  // We don't use attach() — events link by post_id set server-side after post
+  // creation, not via the side_data attach flow.
+  // ---------------------------------------------------------------------------
+
+  function CreateEventModal({ currentUser, onClose, onCreated }) {
+    var { toast } = window.NexusComponents;
+
+    var [title,        setTitle]        = useState("");
+    var [description,  setDescription]  = useState("");
+    var [location,     setLocation]     = useState("");
+    var [startAt,      setStartAt]      = useState("");
+    var [endAt,        setEndAt]        = useState("");
+    var [rsvpEnabled,  setRsvpEnabled]  = useState(true);
+    var [imageUrl,     setImageUrl]     = useState("");
+    var [uploading,    setUploading]    = useState(false);
+    var [submitting,   setSubmitting]   = useState(false);
+    var [errors,       setErrors]       = useState({});
+
+    function toIso(localDt) {
+      // datetime-local value is local time ("2026-08-01T14:00").
+      // new Date(localDt).toISOString() converts to UTC ISO 8601.
+      if (!localDt) return null;
+      var d = new Date(localDt);
+      return isNaN(d.getTime()) ? null : d.toISOString();
+    }
+
+    function validate() {
+      var errs = {};
+      if (!title.trim())  errs.title    = "Title is required";
+      if (!startAt)       errs.start_at = "Start time is required";
+      if (!endAt)         errs.end_at   = "End time is required";
+      if (startAt && endAt && new Date(endAt) <= new Date(startAt)) {
+        errs.end_at = "End time must be after start time";
+      }
+      return errs;
+    }
+
+    function handleImageChange(e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      setUploading(true);
+      uploadImage(file)
+        .then(function (data) {
+          setImageUrl(data.url || "");
+          toast("Image uploaded.");
+        })
+        .catch(function (err) {
+          toast(err.message || "Image upload failed.", "err");
+        })
+        .finally(function () {
+          setUploading(false);
+        });
+    }
+
+    function handleSubmit() {
+      var errs = validate();
+      if (Object.keys(errs).length > 0) {
+        setErrors(errs);
+        return;
+      }
+      setSubmitting(true);
+      setErrors({});
+
+      var payload = {
+        title:        title.trim(),
+        description:  description.trim() || null,
+        location:     location.trim()    || null,
+        image_url:    imageUrl           || null,
+        start_at:     toIso(startAt),
+        end_at:       toIso(endAt),
+        rsvp_enabled: rsvpEnabled,
+      };
+
+      extFetch("/events", {
+        method: "POST",
+        body:   JSON.stringify(payload),
+      }).then(function (data) {
+        if (data && data.event) {
+          toast("Event created!");
+          if (onCreated) onCreated(data.event);
+          onClose();
+        } else if (data && data.errors) {
+          setErrors(data.errors);
+          toast("Please fix the errors below.", "err");
+        } else {
+          toast("Failed to create event. Please try again.", "err");
+        }
+      }).finally(function () {
+        setSubmitting(false);
+      });
+    }
+
+    var labelStyle = {
+      display: "block",
+      fontSize: "12px",
+      fontWeight: 500,
+      color: "var(--t3)",
+      marginBottom: "5px",
+    };
+
+    var inputStyle = {
+      width: "100%",
+      padding: "8px 12px",
+      fontSize: "13px",
+      background: "rgba(255,255,255,0.05)",
+      border: "0.5px solid",
+      borderColor: "rgba(255,255,255,0.1)",
+      borderRadius: "8px",
+      color: "var(--t1)",
+      fontFamily: "inherit",
+      boxSizing: "border-box",
+    };
+
+    var errorStyle = {
+      fontSize: "11px",
+      color: "var(--red)",
+      marginTop: "3px",
+    };
+
+    var fieldStyle = { marginBottom: "14px" };
+
+    return React.createElement("div", {
+      style: {
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "16px",
+      },
+      onClick: function (e) { if (e.target === e.currentTarget) onClose(); },
+    },
+      React.createElement("div", {
+        style: {
+          background: "var(--s2)",
+          border: "0.5px solid var(--b2)",
+          borderRadius: "16px",
+          width: "100%",
+          maxWidth: "520px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        },
+        onClick: function (e) { e.stopPropagation(); },
+      },
+
+        // Header
+        React.createElement("div", {
+          style: {
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "20px 24px 0",
+          }
+        },
+          React.createElement("h2", {
+            style: { fontSize: "16px", fontWeight: 600, color: "var(--t1)", margin: 0 }
+          }, "Create event"),
+          React.createElement("button", {
+            onClick: onClose,
+            style: {
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--t3)", fontSize: "18px", lineHeight: 1, padding: "4px",
+            },
+            "aria-label": "Close",
+          },
+            React.createElement("i", { className: "fa-solid fa-xmark", "aria-hidden": "true" })
+          )
+        ),
+
+        // Form body
+        React.createElement("div", { style: { padding: "20px 24px 24px" } },
+
+          // Title
+          React.createElement("div", { style: fieldStyle },
+            React.createElement("label", { style: labelStyle }, "Event name *"),
+            React.createElement("input", {
+              type: "text",
+              value: title,
+              onChange: function (e) { setTitle(e.target.value); setErrors(function(p) { return Object.assign({}, p, {title: null}); }); },
+              placeholder: "Give your event a name",
+              style: Object.assign({}, inputStyle, errors.title ? { borderColor: "var(--red)" } : {}),
+              maxLength: 200,
+            }),
+            errors.title && React.createElement("div", { style: errorStyle }, errors.title)
+          ),
+
+          // Date/time row
+          React.createElement("div", {
+            style: Object.assign({}, fieldStyle, { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" })
+          },
+            React.createElement("div", null,
+              React.createElement("label", { style: labelStyle }, "Start *"),
+              React.createElement("input", {
+                type: "datetime-local",
+                value: startAt,
+                onChange: function (e) { setStartAt(e.target.value); setErrors(function(p) { return Object.assign({}, p, {start_at: null}); }); },
+                style: Object.assign({}, inputStyle, errors.start_at ? { borderColor: "var(--red)" } : {}),
+              }),
+              errors.start_at && React.createElement("div", { style: errorStyle }, errors.start_at)
+            ),
+            React.createElement("div", null,
+              React.createElement("label", { style: labelStyle }, "End *"),
+              React.createElement("input", {
+                type: "datetime-local",
+                value: endAt,
+                onChange: function (e) { setEndAt(e.target.value); setErrors(function(p) { return Object.assign({}, p, {end_at: null}); }); },
+                style: Object.assign({}, inputStyle, errors.end_at ? { borderColor: "var(--red)" } : {}),
+              }),
+              errors.end_at && React.createElement("div", { style: errorStyle }, errors.end_at)
+            )
+          ),
+
+          // Location
+          React.createElement("div", { style: fieldStyle },
+            React.createElement("label", { style: labelStyle }, "Location"),
+            React.createElement("input", {
+              type: "text",
+              value: location,
+              onChange: function (e) { setLocation(e.target.value); },
+              placeholder: "Where is this event?",
+              style: inputStyle,
+            })
+          ),
+
+          // Description
+          React.createElement("div", { style: fieldStyle },
+            React.createElement("label", { style: labelStyle }, "Description"),
+            React.createElement("textarea", {
+              value: description,
+              onChange: function (e) { setDescription(e.target.value); },
+              placeholder: "Tell people about this event (optional)",
+              rows: 3,
+              style: Object.assign({}, inputStyle, { resize: "vertical", lineHeight: 1.5 }),
+            })
+          ),
+
+          // Cover image
+          React.createElement("div", { style: fieldStyle },
+            React.createElement("label", { style: labelStyle }, "Cover image"),
+            imageUrl
+              ? React.createElement("div", { style: { position: "relative", marginBottom: "8px" } },
+                  React.createElement("img", {
+                    src: imageUrl, alt: "Cover",
+                    style: { width: "100%", height: "120px", objectFit: "cover", borderRadius: "8px", display: "block" }
+                  }),
+                  React.createElement("button", {
+                    onClick: function () { setImageUrl(""); },
+                    style: {
+                      position: "absolute", top: "6px", right: "6px",
+                      background: "rgba(0,0,0,0.6)", border: "none",
+                      borderRadius: "50%", width: "24px", height: "24px",
+                      cursor: "pointer", color: "#fff", fontSize: "12px",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    },
+                    "aria-label": "Remove image",
+                  },
+                    React.createElement("i", { className: "fa-solid fa-xmark", "aria-hidden": "true" })
+                  )
+                )
+              : React.createElement("label", {
+                  style: {
+                    display: "flex", alignItems: "center", gap: "8px",
+                    padding: "10px 14px", borderRadius: "8px",
+                    border: "0.5px dashed rgba(255,255,255,0.15)",
+                    cursor: uploading ? "wait" : "pointer",
+                    color: "var(--t3)", fontSize: "13px",
+                  }
+                },
+                  React.createElement("i", {
+                    className: uploading ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-image",
+                    "aria-hidden": "true",
+                  }),
+                  uploading ? "Uploading…" : "Choose cover image",
+                  React.createElement("input", {
+                    type: "file",
+                    accept: "image/jpeg,image/png,image/gif,image/webp",
+                    onChange: handleImageChange,
+                    disabled: uploading,
+                    style: { display: "none" },
+                  })
+                )
+          ),
+
+          // RSVP toggle
+          React.createElement("div", {
+            style: Object.assign({}, fieldStyle, {
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 14px",
+              background: "rgba(255,255,255,0.03)",
+              border: "0.5px solid var(--b1)",
+              borderRadius: "8px",
+            })
+          },
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: "13px", color: "var(--t1)", fontWeight: 500 } }, "Enable RSVP"),
+              React.createElement("div", { style: { fontSize: "11px", color: "var(--t3)" } }, "Let members RSVP to this event")
+            ),
+            // Use NexusComponents.Toggle per guide §9.14.2
+            React.createElement(window.NexusComponents.Toggle, {
+              value: rsvpEnabled,
+              onChange: setRsvpEnabled,
+            })
+          ),
+
+          // Action row
+          React.createElement("div", {
+            style: {
+              display: "flex", justifyContent: "flex-end", gap: "8px",
+              marginTop: "20px",
+            }
+          },
+            React.createElement("button", {
+              className: "btn-ghost",
+              onClick: onClose,
+              disabled: submitting,
+            }, "Cancel"),
+            React.createElement("button", {
+              className: "btn-primary",
+              onClick: handleSubmit,
+              disabled: submitting || uploading,
+            }, submitting ? "Creating…" : "Create event")
+          )
+        )
+      )
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // mountCreateModal — mounts CreateEventModal into a portal on document.body.
+  // Called from the toolbar button's onClick. Returns an unmount function.
+  // This pattern is necessary because onClick is a plain function call,
+  // not a React render context — guide §9.7.
+  // ---------------------------------------------------------------------------
+
+  function mountCreateModal(props) {
+    var container = document.createElement("div");
+    container.id  = "nexus-events-create-modal";
+    document.body.appendChild(container);
+
+    var root = window.ReactDOM.createRoot(container);
+
+    function unmount() {
+      root.unmount();
+      if (container.parentNode) container.parentNode.removeChild(container);
+    }
+
+    root.render(
+      React.createElement(CreateEventModal, Object.assign({}, props, {
+        onClose: function () {
+          if (props.onClose) props.onClose();
+          unmount();
+        },
+      }))
+    );
+
+    return unmount;
+  }
+
+
+  // ---------------------------------------------------------------------------
   // Registrations
   // ---------------------------------------------------------------------------
 
@@ -1325,8 +1712,9 @@
     icon:  "fa-solid fa-calendar-plus",
     tip:   "Create an event",
     scope: "posts",
-    onClick: function () {
-      // Stage 8: open CreateEventModal
+    onClick: function (_ref) {
+      var currentUser = _ref ? _ref.currentUser : null;
+      mountCreateModal({ currentUser: currentUser });
     },
   });
 
