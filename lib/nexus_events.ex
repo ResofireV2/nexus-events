@@ -75,7 +75,7 @@ defmodule NexusEvents do
   # Stage 4 adds the real cleanup logic; the catch-all satisfies the loader now.
 
   @impl true
-  def handle_event("post_deleted", %{"post_id" => post_id}, _settings) do
+  def handle_event("post_deleted", %{post_id: post_id}, _settings) do
     NexusEvents.Events.delete_event_for_post(post_id)
     :ok
   end
