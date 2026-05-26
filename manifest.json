@@ -11,7 +11,11 @@
   "license": "MIT",
   "logo_url": "/ext/nexus-events/assets/logo.webp",
   "banner_url": "/ext/nexus-events/assets/banner.webp",
-  "tags": ["events", "calendar", "community"],
+  "tags": [
+    "events",
+    "calendar",
+    "community"
+  ],
   "compatible_with": "^1.0",
   "module": "NexusEvents",
   "js_bundle": "nexus-events.js",
@@ -54,22 +58,52 @@
       "default": "forever",
       "description": "How long to keep past events in the database before automatic removal.",
       "options": [
-        {"value": "30_days",  "label": "30 days"},
-        {"value": "90_days",  "label": "90 days"},
-        {"value": "180_days", "label": "180 days"},
-        {"value": "1_year",   "label": "1 year"},
-        {"value": "forever",  "label": "Keep forever"}
+        {
+          "value": "30_days",
+          "label": "30 days"
+        },
+        {
+          "value": "90_days",
+          "label": "90 days"
+        },
+        {
+          "value": "180_days",
+          "label": "180 days"
+        },
+        {
+          "value": "1_year",
+          "label": "1 year"
+        },
+        {
+          "value": "forever",
+          "label": "Keep forever"
+        }
       ]
     }
   },
   "settings_tabs": [],
   "hooks": [
-    {"event": "post_deleted", "priority": 50}
+    {
+      "event": "post_created",
+      "priority": 50
+    },
+    {
+      "event": "post_deleted",
+      "priority": 50
+    }
   ],
-  "slots": ["post_footer"],
+  "slots": [
+    "post_footer"
+  ],
   "routes": [
-    {"path": "/",           "title": "Events"},
-    {"path": "/event/:id",  "title": "Event"}
+    {
+      "path": "/",
+      "title": "Events"
+    },
+    {
+      "path": "/event/:id",
+      "title": "Event"
+    }
   ],
   "admin_panel": {
     "label": "Events",
@@ -105,25 +139,60 @@
       "label": "Event cancelled",
       "description": "Fires when an event you RSVPed to is cancelled.",
       "icon": "fa-calendar-xmark",
-      "channels": ["web", "email"],
+      "channels": [
+        "web",
+        "email"
+      ],
       "default_preferences": {
         "web": true,
         "email": true
       },
       "payload_schema": {
-        "event_id":   "ID of the cancelled event",
+        "event_id": "ID of the cancelled event",
         "event_title": "Title of the cancelled event"
       }
     }
   ],
   "permissions": [
-    {"key": "can_view_events",      "label": "Can view events and the calendar",          "default": "everyone"},
-    {"key": "can_create_event",     "label": "Can create a new event",                    "default": "member"},
-    {"key": "can_rsvp",             "label": "Can RSVP to an event",                      "default": "member"},
-    {"key": "can_view_attendees",   "label": "Can view the attendee list for an event",   "default": "member"},
-    {"key": "can_edit_any_event",   "label": "Can edit events created by other members",  "default": "moderator"},
-    {"key": "can_cancel_event",     "label": "Can cancel an event (notifies all RSVPs)",  "default": "moderator"},
-    {"key": "can_delete_any_event", "label": "Can delete events created by other members","default": "moderator"},
-    {"key": "can_manage_events",    "label": "Can access event management controls",      "default": "moderator"}
+    {
+      "key": "can_view_events",
+      "label": "Can view events and the calendar",
+      "default": "everyone"
+    },
+    {
+      "key": "can_create_event",
+      "label": "Can create a new event",
+      "default": "member"
+    },
+    {
+      "key": "can_rsvp",
+      "label": "Can RSVP to an event",
+      "default": "member"
+    },
+    {
+      "key": "can_view_attendees",
+      "label": "Can view the attendee list for an event",
+      "default": "member"
+    },
+    {
+      "key": "can_edit_any_event",
+      "label": "Can edit events created by other members",
+      "default": "moderator"
+    },
+    {
+      "key": "can_cancel_event",
+      "label": "Can cancel an event (notifies all RSVPs)",
+      "default": "moderator"
+    },
+    {
+      "key": "can_delete_any_event",
+      "label": "Can delete events created by other members",
+      "default": "moderator"
+    },
+    {
+      "key": "can_manage_events",
+      "label": "Can access event management controls",
+      "default": "moderator"
+    }
   ]
 }

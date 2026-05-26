@@ -78,6 +78,14 @@ defmodule NexusEvents do
   # Stage 4 adds the real cleanup logic; the catch-all satisfies the loader now.
 
   @impl true
+  def handle_event("post_created", %{user_id: user_id, post_id: post_id}, _settings) do
+    # Link the most recent unlinked event from this user to the new post.
+    # This is how toolbar-button-created events get attached to their post.
+    NexusEvents.Events.link_pending_event(user_id, post_id)
+    :ok
+  end
+
+  @impl true
   def handle_event("post_deleted", %{post_id: post_id}, _settings) do
     NexusEvents.Events.delete_event_for_post(post_id)
     :ok
