@@ -28,6 +28,7 @@ defmodule NexusEvents.ApiRouter do
   alias NexusEvents.Events
 
   plug :match
+  plug :fetch_query_params
   plug :dispatch
 
   @slug "nexus-events"

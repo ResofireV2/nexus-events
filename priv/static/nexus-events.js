@@ -349,16 +349,940 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Routes — real components come in Stage 7
+  // Date utilities — no external dependencies
   // ---------------------------------------------------------------------------
 
-  function CalendarPage() {
-    return null; // Stage 7
+  function startOfMonth(year, month) {
+    return new Date(year, month, 1);
   }
 
-  function EventDetailPage() {
-    return null; // Stage 7
+  function daysInMonth(year, month) {
+    return new Date(year, month + 1, 0).getDate();
   }
+
+  function isSameDay(a, b) {
+    return a.getFullYear() === b.getFullYear() &&
+           a.getMonth() === b.getMonth() &&
+           a.getDate() === b.getDate();
+  }
+
+  function isToday(d) {
+    return isSameDay(d, new Date());
+  }
+
+  function formatMonthYear(year, month) {
+    return new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+
+  function formatWeekRange(date) {
+    const sun = new Date(date);
+    sun.setDate(sun.getDate() - sun.getDay());
+    const sat = new Date(sun);
+    sat.setDate(sat.getDate() + 6);
+    const opts = { month: "short", day: "numeric" };
+    return sun.toLocaleDateString(undefined, opts) + " – " + sat.toLocaleDateString(undefined, opts);
+  }
+
+  function formatQuarter(year, quarter) {
+    return "Q" + quarter + " " + year;
+  }
+
+  function getQuarter(year, month) {
+    return Math.floor(month / 3) + 1;
+  }
+
+  function quarterStartMonth(quarter) {
+    return (quarter - 1) * 3;
+  }
+
+  function eventsOnDay(events, year, month, day) {
+    const d = new Date(year, month, day);
+    return events.filter(function (e) {
+      const start = new Date(e.start_at);
+      const end   = new Date(e.end_at);
+      return d >= new Date(start.getFullYear(), start.getMonth(), start.getDate()) &&
+             d <= new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
+    });
+  }
+
+  function eventsInWeek(events, weekStart) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+    return events.filter(function (e) {
+      const start = new Date(e.start_at);
+      return start >= weekStart && start <= weekEnd;
+    });
+  }
+
+  function startOfWeekContaining(date) {
+    const d = new Date(date);
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function formatShortDate(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  function formatDateFull(iso) {
+    if (!iso) return "";
+    return new Date(iso).toLocaleDateString(undefined, {
+      weekday: "short", month: "short", day: "numeric", year: "numeric"
+    });
+  }
+
+  // Chip color by event index for visual variety
+  var CHIP_COLORS = [
+    { bg: "rgba(167,139,250,0.18)", color: "var(--ac-text)" },
+    { bg: "rgba(52,211,153,0.15)",  color: "var(--green)" },
+    { bg: "rgba(251,191,36,0.13)",  color: "#fbbf24" },
+    { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
+  ];
+
+  function chipColor(idx) {
+    return CHIP_COLORS[idx % CHIP_COLORS.length];
+  }
+
+  // ---------------------------------------------------------------------------
+  // EventDetailModal — opens when clicking an event chip or row
+  // ---------------------------------------------------------------------------
+
+  function EventDetailModal({ event, onClose, currentUser }) {
+    const [counts, setCounts]       = useState(null);
+    const [userRsvp, setUserRsvp]   = useState(null);
+    const [rsvpLoading, setRsvpLoading] = useState(false);
+    const { toast } = window.NexusComponents;
+
+    useEffect(function () {
+      if (!event) return;
+      extFetch("/events/" + event.id)
+        .then(function (data) {
+          if (data && data.rsvp_counts) setCounts(data.rsvp_counts);
+          if (data && data.user_rsvp)   setUserRsvp(data.user_rsvp);
+        });
+    }, [event && event.id]);
+
+    if (!event) return null;
+
+    var isCancelled = event.status === "cancelled";
+
+    function handleRsvp(response) {
+      if (rsvpLoading) return;
+      setRsvpLoading(true);
+      extFetch("/events/" + event.id + "/rsvp", {
+        method: "POST",
+        body: JSON.stringify({ response: response }),
+      }).then(function (data) {
+        if (data && data.rsvp) {
+          setUserRsvp(data.rsvp);
+          setCounts(data.rsvp_counts);
+          toast(response === "attending" ? "You're attending!" : "Marked as interested.");
+        } else {
+          toast("Couldn't RSVP — please try again.", "err");
+        }
+      }).finally(function () { setRsvpLoading(false); });
+    }
+
+    function handleUnrsvp() {
+      if (rsvpLoading) return;
+      setRsvpLoading(true);
+      extFetch("/events/" + event.id + "/rsvp", { method: "DELETE" })
+        .then(function (data) {
+          if (data && data.ok) {
+            setUserRsvp(null);
+            setCounts(data.rsvp_counts);
+            toast("RSVP removed.");
+          } else {
+            toast("Couldn't remove RSVP — please try again.", "err");
+          }
+        }).finally(function () { setRsvpLoading(false); });
+    }
+
+    return React.createElement("div", {
+      style: {
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.6)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: "16px",
+      },
+      onClick: function (e) { if (e.target === e.currentTarget) onClose(); },
+    },
+      React.createElement("div", {
+        style: {
+          background: "var(--s2)",
+          border: "0.5px solid var(--b2)",
+          borderRadius: "16px",
+          width: "100%",
+          maxWidth: "480px",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        }
+      },
+        // Cover image
+        event.image_url && React.createElement("div", {
+          style: { width: "100%", height: "180px", overflow: "hidden", borderRadius: "16px 16px 0 0" }
+        },
+          React.createElement("img", {
+            src: event.image_url, alt: event.title,
+            style: { width: "100%", height: "100%", objectFit: "cover", display: "block" }
+          })
+        ),
+
+        // Modal content
+        React.createElement("div", { style: { padding: "20px 24px 24px" } },
+
+          // Header
+          React.createElement("div", {
+            style: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "16px" }
+          },
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+              React.createElement("h2", {
+                style: { fontSize: "18px", fontWeight: 600, color: "var(--t1)", margin: "0 0 4px", lineHeight: 1.3 }
+              }, event.title),
+              isCancelled && React.createElement("span", {
+                style: {
+                  display: "inline-block", fontSize: "11px", padding: "2px 8px",
+                  borderRadius: "20px", background: "rgba(248,113,113,0.12)",
+                  color: "var(--red)", border: "0.5px solid var(--red)",
+                }
+              }, "Cancelled")
+            ),
+            React.createElement("button", {
+              onClick: onClose,
+              style: {
+                background: "none", border: "none", cursor: "pointer",
+                color: "var(--t3)", fontSize: "18px", lineHeight: 1,
+                padding: "4px", marginLeft: "12px", flexShrink: 0,
+              },
+              "aria-label": "Close",
+            },
+              React.createElement("i", { className: "fa-solid fa-xmark", "aria-hidden": "true" })
+            )
+          ),
+
+          // Details
+          React.createElement("div", {
+            style: { display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }
+          },
+            React.createElement("div", {
+              style: { display: "flex", gap: "8px", fontSize: "13px", color: "var(--t3)" }
+            },
+              React.createElement("i", { className: "fa-regular fa-clock", style: { marginTop: "2px" }, "aria-hidden": "true" }),
+              React.createElement("span", null,
+                formatDateFull(event.start_at), " · ",
+                formatTime(event.start_at), " – ", formatTime(event.end_at)
+              )
+            ),
+
+            event.location && React.createElement("div", {
+              style: { display: "flex", gap: "8px", fontSize: "13px", color: "var(--t3)" }
+            },
+              React.createElement("i", { className: "fa-solid fa-location-dot", style: { marginTop: "2px" }, "aria-hidden": "true" }),
+              React.createElement("span", null, event.location)
+            ),
+
+            event.description && React.createElement("div", {
+              style: { fontSize: "14px", color: "var(--t2)", lineHeight: 1.6, marginTop: "4px" }
+            }, event.description)
+          ),
+
+          // RSVP section
+          event.rsvp_enabled && !isCancelled && React.createElement("div", {
+            style: { borderTop: "0.5px solid var(--b1)", paddingTop: "16px" }
+          },
+            counts && React.createElement("div", {
+              style: { fontSize: "13px", color: "var(--t3)", marginBottom: "12px" }
+            },
+              React.createElement("i", { className: "fa-solid fa-users", style: { marginRight: "6px" }, "aria-hidden": "true" }),
+              counts.attending, " attending",
+              counts.maybe > 0 && (" · " + counts.maybe + " maybe")
+            ),
+
+            React.createElement("div", { style: { display: "flex", gap: "8px" } },
+              userRsvp
+                ? React.createElement(React.Fragment, null,
+                    React.createElement("span", {
+                      style: {
+                        fontSize: "13px", padding: "7px 14px", borderRadius: "20px",
+                        background: "var(--ac-bg)", color: "var(--ac-text)",
+                        border: "0.5px solid var(--ac-border)",
+                      }
+                    },
+                      React.createElement("i", { className: "fa-solid fa-check", style: { marginRight: "6px", fontSize: "11px" }, "aria-hidden": "true" }),
+                      userRsvp.response === "attending" ? "Attending" : "Interested"
+                    ),
+                    React.createElement("button", {
+                      className: "btn-ghost",
+                      onClick: handleUnrsvp,
+                      disabled: rsvpLoading,
+                    }, "Remove")
+                  )
+                : React.createElement(React.Fragment, null,
+                    React.createElement("button", {
+                      className: "btn-primary",
+                      onClick: function () { handleRsvp("attending"); },
+                      disabled: rsvpLoading,
+                    }, rsvpLoading ? "…" : "Attend"),
+                    React.createElement("button", {
+                      className: "btn-ghost",
+                      onClick: function () { handleRsvp("maybe"); },
+                      disabled: rsvpLoading,
+                    }, "Maybe")
+                  )
+            )
+          )
+        )
+      )
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Monthly view
+  // ---------------------------------------------------------------------------
+
+  function MonthlyView({ events, year, month, canCreate, onEventClick, onNewEvent }) {
+    var firstDay = startOfMonth(year, month).getDay();
+    var days = daysInMonth(year, month);
+    var cells = [];
+
+    // Leading cells from previous month
+    var prevDays = daysInMonth(year, month - 1);
+    for (var i = 0; i < firstDay; i++) {
+      cells.push({ day: prevDays - firstDay + 1 + i, thisMonth: false });
+    }
+    for (var d = 1; d <= days; d++) {
+      cells.push({ day: d, thisMonth: true });
+    }
+    // Trailing cells
+    var remaining = 42 - cells.length;
+    for (var t = 1; t <= remaining; t++) {
+      cells.push({ day: t, thisMonth: false });
+    }
+
+    var dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    return React.createElement("div", { style: { paddingBottom: "24px" } },
+      // Day headers
+      React.createElement("div", {
+        style: {
+          display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+          borderRadius: "12px 12px 0 0",
+          overflow: "hidden",
+          border: "0.5px solid var(--b1)",
+          borderBottom: "none",
+        }
+      },
+        dayNames.map(function (n) {
+          return React.createElement("div", {
+            key: n,
+            style: {
+              background: "var(--s1)", padding: "8px 0", textAlign: "center",
+              fontSize: "10px", fontWeight: 500, color: "var(--t3)",
+              textTransform: "uppercase", letterSpacing: "0.6px",
+            }
+          }, n);
+        })
+      ),
+      // Grid
+      React.createElement("div", {
+        style: {
+          display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "1px", background: "var(--b1)",
+          border: "0.5px solid var(--b1)",
+          borderTop: "none",
+          borderRadius: "0 0 12px 12px",
+          overflow: "hidden",
+        }
+      },
+        cells.map(function (cell, idx) {
+          var cellEvents = cell.thisMonth
+            ? eventsOnDay(events, year, month, cell.day)
+            : [];
+          var today = cell.thisMonth && isToday(new Date(year, month, cell.day));
+          var MAX_CHIPS = 2;
+          var overflow = cellEvents.length > MAX_CHIPS ? cellEvents.length - MAX_CHIPS : 0;
+
+          return React.createElement("div", {
+            key: idx,
+            style: {
+              background: cell.thisMonth ? "var(--s1)" : "var(--bg)",
+              minHeight: "80px", padding: "6px 8px",
+              display: "flex", flexDirection: "column", gap: "3px",
+            }
+          },
+            // Day number
+            React.createElement("div", {
+              style: {
+                width: "22px", height: "22px",
+                borderRadius: "50%",
+                background: today ? "var(--ac)" : "transparent",
+                color: today ? "var(--ac-on)" : cell.thisMonth ? "var(--t2)" : "var(--t5)",
+                fontSize: "11px",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontWeight: today ? 600 : 400,
+                flexShrink: 0,
+              }
+            }, cell.day),
+
+            // Event chips (up to MAX_CHIPS)
+            cellEvents.slice(0, MAX_CHIPS).map(function (ev, i) {
+              var c = chipColor(events.indexOf(ev));
+              return React.createElement("div", {
+                key: ev.id,
+                onClick: function () { onEventClick(ev); },
+                style: {
+                  fontSize: "10px", padding: "2px 6px", borderRadius: "4px",
+                  background: c.bg, color: c.color,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  cursor: "pointer",
+                  opacity: ev.status === "cancelled" ? 0.5 : 1,
+                }
+              }, ev.title);
+            }),
+
+            // Overflow indicator
+            overflow > 0 && React.createElement("div", {
+              style: { fontSize: "10px", color: "var(--t4)", cursor: "pointer" },
+              onClick: function () { onEventClick(cellEvents[MAX_CHIPS]); },
+            }, "+" + overflow + " more")
+          );
+        })
+      )
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Weekly view
+  // ---------------------------------------------------------------------------
+
+  function WeeklyView({ events, weekStart, onEventClick }) {
+    var days = [];
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+
+    var HOURS = [];
+    for (var h = 8; h <= 20; h++) { HOURS.push(h); }
+    var CELL_H = 48;
+
+    var weekEvents = eventsInWeek(events, weekStart);
+
+    return React.createElement("div", {
+      style: {
+        border: "0.5px solid var(--b1)", borderRadius: "12px",
+        overflow: "hidden", marginBottom: "24px",
+      }
+    },
+      // Header row
+      React.createElement("div", {
+        style: {
+          display: "grid",
+          gridTemplateColumns: "52px repeat(7, 1fr)",
+          borderBottom: "0.5px solid var(--b1)",
+        }
+      },
+        React.createElement("div", { style: { background: "var(--s1)" } }),
+        days.map(function (d) {
+          var today = isToday(d);
+          return React.createElement("div", {
+            key: d.toISOString(),
+            style: {
+              background: "var(--s1)", padding: "10px 0", textAlign: "center",
+              borderLeft: "1px solid var(--b1)",
+            }
+          },
+            React.createElement("div", {
+              style: { fontSize: "10px", color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.5px" }
+            }, d.toLocaleDateString(undefined, { weekday: "short" })),
+            React.createElement("div", {
+              style: {
+                fontSize: "20px", fontWeight: 400, lineHeight: 1.2,
+                color: today ? "var(--ac)" : "var(--t2)",
+              }
+            }, d.getDate())
+          );
+        })
+      ),
+
+      // Time grid
+      React.createElement("div", { style: { position: "relative" } },
+        HOURS.map(function (h) {
+          return React.createElement("div", {
+            key: h,
+            style: {
+              display: "grid",
+              gridTemplateColumns: "52px repeat(7, 1fr)",
+              borderBottom: "0.5px solid rgba(255,255,255,0.04)",
+              height: CELL_H + "px",
+            }
+          },
+            // Time label
+            React.createElement("div", {
+              style: {
+                background: "var(--s1)", fontSize: "10px", color: "var(--t4)",
+                textAlign: "right", paddingRight: "8px", paddingTop: "3px",
+                flexShrink: 0,
+              }
+            }, h <= 12 ? h + " AM" : (h - 12) + " PM"),
+
+            // Day cells
+            days.map(function (d, di) {
+              // Find events starting in this hour slot on this day
+              var slotEvents = weekEvents.filter(function (e) {
+                var start = new Date(e.start_at);
+                return isSameDay(start, d) && start.getHours() === h;
+              });
+
+              return React.createElement("div", {
+                key: di,
+                style: {
+                  background: "var(--s1)", borderLeft: "1px solid rgba(255,255,255,0.04)",
+                  position: "relative", overflow: "visible",
+                }
+              },
+                slotEvents.map(function (ev, i) {
+                  var start = new Date(ev.start_at);
+                  var end   = new Date(ev.end_at);
+                  var durationH = Math.max(1, (end - start) / 3600000);
+                  var heightPx  = Math.min(durationH, 4) * CELL_H - 4;
+                  var c = chipColor(events.indexOf(ev));
+
+                  return React.createElement("div", {
+                    key: ev.id,
+                    onClick: function () { onEventClick(ev); },
+                    style: {
+                      position: "absolute", top: "3px", left: "3px", right: "3px",
+                      height: heightPx + "px",
+                      background: c.bg,
+                      borderLeft: "2.5px solid " + c.color,
+                      borderRadius: "5px",
+                      padding: "3px 6px",
+                      fontSize: "10px", color: c.color,
+                      overflow: "hidden", cursor: "pointer",
+                      zIndex: 1,
+                      opacity: ev.status === "cancelled" ? 0.5 : 1,
+                    }
+                  },
+                    React.createElement("div", {
+                      style: { fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+                    }, ev.title),
+                    React.createElement("div", { style: { fontSize: "9px", opacity: 0.8 } },
+                      formatTime(ev.start_at)
+                    )
+                  );
+                })
+              );
+            })
+          );
+        })
+      )
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quarterly view
+  // ---------------------------------------------------------------------------
+
+  function QuarterlyView({ events, year, quarter, onEventClick }) {
+    var startMonth = quarterStartMonth(quarter);
+    var months = [startMonth, startMonth + 1, startMonth + 2];
+    var today = new Date();
+
+    // Flat event list for the quarter
+    var qStart = new Date(year, startMonth, 1);
+    var qEnd   = new Date(year, startMonth + 3, 0, 23, 59, 59);
+    var qEvents = events.filter(function (e) {
+      var s = new Date(e.start_at);
+      return s >= qStart && s <= qEnd;
+    }).sort(function (a, b) { return new Date(a.start_at) - new Date(b.start_at); });
+
+    return React.createElement("div", { style: { paddingBottom: "24px" } },
+      // Three mini-month grids
+      React.createElement("div", {
+        style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "20px" }
+      },
+        months.map(function (m) {
+          var firstDay = startOfMonth(year, m).getDay();
+          var days = daysInMonth(year, m);
+          var cells = [];
+          for (var i = 0; i < firstDay; i++) { cells.push({ day: null }); }
+          for (var d = 1; d <= days; d++) { cells.push({ day: d }); }
+          while (cells.length % 7 !== 0) { cells.push({ day: null }); }
+
+          return React.createElement("div", {
+            key: m,
+            style: {
+              background: "var(--s1)", border: "0.5px solid var(--b1)",
+              borderRadius: "10px", padding: "12px",
+            }
+          },
+            React.createElement("div", {
+              style: { fontSize: "12px", fontWeight: 500, color: "var(--t2)", marginBottom: "8px" }
+            }, new Date(year, m, 1).toLocaleDateString(undefined, { month: "long" })),
+
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "1px" } },
+              ["S","M","T","W","T","F","S"].map(function (n, i) {
+                return React.createElement("div", {
+                  key: i,
+                  style: { fontSize: "9px", color: "var(--t4)", textAlign: "center", padding: "2px 0" }
+                }, n);
+              }),
+
+              cells.map(function (cell, idx) {
+                if (!cell.day) {
+                  return React.createElement("div", { key: idx, style: { height: "24px" } });
+                }
+                var dayDate = new Date(year, m, cell.day);
+                var dayEvents = eventsOnDay(events, year, m, cell.day);
+                var todayCell = isToday(dayDate);
+
+                return React.createElement("div", {
+                  key: idx,
+                  style: {
+                    height: "24px", display: "flex", alignItems: "center",
+                    justifyContent: "center", borderRadius: "50%",
+                    background: todayCell ? "var(--ac)" : "transparent",
+                    cursor: dayEvents.length ? "pointer" : "default",
+                    position: "relative",
+                  },
+                  onClick: dayEvents.length ? function () { onEventClick(dayEvents[0]); } : undefined,
+                },
+                  React.createElement("span", {
+                    style: {
+                      fontSize: "10px",
+                      color: todayCell ? "var(--ac-on)" : dayEvents.length ? "var(--t1)" : "var(--t3)",
+                      fontWeight: dayEvents.length ? 500 : 400,
+                    }
+                  }, cell.day),
+
+                  // Dot indicator for events
+                  dayEvents.length > 0 && !todayCell && React.createElement("div", {
+                    style: {
+                      position: "absolute", bottom: "2px", left: "50%",
+                      transform: "translateX(-50%)",
+                      width: "3px", height: "3px", borderRadius: "50%",
+                      background: chipColor(0).color,
+                    }
+                  })
+                );
+              })
+            )
+          );
+        })
+      ),
+
+      // Flat event list for the quarter
+      qEvents.length > 0 && React.createElement("div", null,
+        React.createElement("div", {
+          style: {
+            fontSize: "10px", fontWeight: 500, color: "var(--t4)",
+            textTransform: "uppercase", letterSpacing: "0.8px",
+            marginBottom: "8px",
+          }
+        }, "Events this quarter"),
+
+        React.createElement("div", {
+          style: { display: "flex", flexDirection: "column", gap: "4px" }
+        },
+          qEvents.map(function (ev) {
+            var c = chipColor(events.indexOf(ev));
+            return React.createElement("div", {
+              key: ev.id,
+              onClick: function () { onEventClick(ev); },
+              style: {
+                display: "flex", alignItems: "center", gap: "10px",
+                padding: "8px 12px",
+                background: "var(--s1)", border: "0.5px solid var(--b1)",
+                borderRadius: "8px", cursor: "pointer",
+                opacity: ev.status === "cancelled" ? 0.5 : 1,
+              }
+            },
+              React.createElement("div", {
+                style: {
+                  width: "8px", height: "8px", borderRadius: "50%",
+                  background: c.color, flexShrink: 0,
+                }
+              }),
+              React.createElement("div", {
+                style: { fontSize: "11px", color: "var(--t3)", width: "64px", flexShrink: 0 }
+              }, formatShortDate(ev.start_at)),
+              React.createElement("div", {
+                style: { fontSize: "12px", color: "var(--t1)", flex: 1, minWidth: 0,
+                         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+              }, ev.title),
+              React.createElement("div", {
+                style: { fontSize: "11px", color: "var(--t4)", flexShrink: 0 }
+              },
+                ev.rsvp_counts
+                  ? (ev.rsvp_counts.attending + " attending")
+                  : ""
+              )
+            );
+          })
+        )
+      ),
+
+      qEvents.length === 0 && React.createElement("div", {
+        style: { textAlign: "center", padding: "32px 0", fontSize: "13px", color: "var(--t4)" }
+      }, "No events this quarter")
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // CalendarPage — main route component for "/"
+  // Props received from Nexus: { currentUser } (no path params on "/" route)
+  // Navigation: window.NexusExtensions.navigate(url) per guide §9.3
+  // ---------------------------------------------------------------------------
+
+  function CalendarPage({ currentUser }) {
+    var now  = new Date();
+
+    var [view,       setView]       = useState("monthly");
+    var [year,       setYear]       = useState(now.getFullYear());
+    var [month,      setMonth]      = useState(now.getMonth());
+    var [weekStart,  setWeekStart]  = useState(startOfWeekContaining(now));
+    var [quarter,    setQuarter]    = useState(getQuarter(now.getFullYear(), now.getMonth()));
+    var [qYear,      setQYear]      = useState(now.getFullYear());
+    var [events,     setEvents]     = useState([]);
+    var [loading,    setLoading]    = useState(true);
+    var [perms,      setPerms]      = useState({});
+    var [modalEvent, setModalEvent] = useState(null);
+
+    // Fetch events and permissions on mount
+    useEffect(function () {
+      extFetch("/permissions").then(function (data) {
+        if (data && data.permissions) setPerms(data.permissions);
+      });
+
+      extFetch("/events?filter=upcoming").then(function (data) {
+        if (data && data.events) {
+          setEvents(data.events);
+        }
+        setLoading(false);
+      });
+    }, []);
+
+    // Navigation helpers
+    function prevPeriod() {
+      if (view === "monthly") {
+        if (month === 0) { setMonth(11); setYear(function (y) { return y - 1; }); }
+        else setMonth(function (m) { return m - 1; });
+      } else if (view === "weekly") {
+        setWeekStart(function (ws) {
+          var d = new Date(ws); d.setDate(d.getDate() - 7); return d;
+        });
+      } else {
+        if (quarter === 1) { setQuarter(4); setQYear(function (y) { return y - 1; }); }
+        else setQuarter(function (q) { return q - 1; });
+      }
+    }
+
+    function nextPeriod() {
+      if (view === "monthly") {
+        if (month === 11) { setMonth(0); setYear(function (y) { return y + 1; }); }
+        else setMonth(function (m) { return m + 1; });
+      } else if (view === "weekly") {
+        setWeekStart(function (ws) {
+          var d = new Date(ws); d.setDate(d.getDate() + 7); return d;
+        });
+      } else {
+        if (quarter === 4) { setQuarter(1); setQYear(function (y) { return y + 1; }); }
+        else setQuarter(function (q) { return q + 1; });
+      }
+    }
+
+    function periodLabel() {
+      if (view === "monthly")   return formatMonthYear(year, month);
+      if (view === "weekly")    return formatWeekRange(weekStart);
+      return formatQuarter(qYear, quarter);
+    }
+
+    try {
+    return React.createElement("div", { style: { paddingTop: "20px", paddingBottom: "40px" } },
+
+      // ── Calendar header ────────────────────────────────────────────────────
+      React.createElement("div", {
+        style: {
+          display: "flex", alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap", gap: "10px",
+          marginBottom: "16px",
+        }
+      },
+
+        // Nav: arrows + period label
+        React.createElement("div", {
+          style: { display: "flex", alignItems: "center", gap: "10px" }
+        },
+          React.createElement("button", {
+            onClick: prevPeriod,
+            style: {
+              width: "30px", height: "30px", borderRadius: "8px",
+              border: "0.5px solid var(--b2)", background: "none",
+              color: "var(--t3)", cursor: "pointer", fontSize: "12px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            },
+            "aria-label": "Previous period",
+          },
+            React.createElement("i", { className: "fa-solid fa-chevron-left", "aria-hidden": "true" })
+          ),
+          React.createElement("span", {
+            style: { fontSize: "15px", fontWeight: 500, color: "var(--t1)", minWidth: "160px" }
+          }, periodLabel()),
+          React.createElement("button", {
+            onClick: nextPeriod,
+            style: {
+              width: "30px", height: "30px", borderRadius: "8px",
+              border: "0.5px solid var(--b2)", background: "none",
+              color: "var(--t3)", cursor: "pointer", fontSize: "12px",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            },
+            "aria-label": "Next period",
+          },
+            React.createElement("i", { className: "fa-solid fa-chevron-right", "aria-hidden": "true" })
+          )
+        ),
+
+        // Right side: view pills + New event button
+        React.createElement("div", {
+          style: { display: "flex", alignItems: "center", gap: "10px" }
+        },
+          // View pills
+          React.createElement("div", {
+            style: {
+              display: "flex", gap: "3px",
+              background: "rgba(255,255,255,0.05)",
+              borderRadius: "10px", padding: "3px",
+            }
+          },
+            ["Weekly", "Monthly", "Quarterly"].map(function (v) {
+              var active = view === v.toLowerCase();
+              return React.createElement("button", {
+                key: v,
+                onClick: function () { setView(v.toLowerCase()); },
+                style: {
+                  fontSize: "11px", padding: "5px 12px", borderRadius: "7px",
+                  border: "none", fontFamily: "inherit", cursor: "pointer",
+                  background: active ? "rgba(167,139,250,0.18)" : "transparent",
+                  color: active ? "var(--ac-text)" : "var(--t3)",
+                  transition: "all 0.1s",
+                }
+              }, v);
+            })
+          ),
+
+          // New event button — only shown if user has can_create_event permission
+          perms.can_create_event && React.createElement("button", {
+            className: "btn-primary",
+            style: { fontSize: "12px", padding: "7px 14px", display: "flex", alignItems: "center", gap: "6px" },
+            onClick: function () {
+              // Stage 8: open CreateEventModal
+            },
+          },
+            React.createElement("i", { className: "fa-solid fa-plus", style: { fontSize: "11px" }, "aria-hidden": "true" }),
+            "New event"
+          )
+        )
+      ),
+
+      // ── Loading state ──────────────────────────────────────────────────────
+      loading && React.createElement("div", {
+        style: { textAlign: "center", padding: "48px 0", color: "var(--t4)", fontSize: "14px" }
+      },
+        React.createElement("i", { className: "fa-solid fa-spinner fa-spin", style: { marginRight: "8px" }, "aria-hidden": "true" }),
+        "Loading events…"
+      ),
+
+      // ── Calendar views ─────────────────────────────────────────────────────
+      !loading && view === "monthly" && React.createElement(MonthlyView, {
+        events: events, year: year, month: month,
+        canCreate: perms.can_create_event,
+        onEventClick: setModalEvent,
+        onNewEvent: function () {},
+      }),
+
+      !loading && view === "weekly" && React.createElement(WeeklyView, {
+        events: events, weekStart: weekStart,
+        onEventClick: setModalEvent,
+      }),
+
+      !loading && view === "quarterly" && React.createElement(QuarterlyView, {
+        events: events, year: qYear, quarter: quarter,
+        onEventClick: setModalEvent,
+      }),
+
+      // ── Event detail modal ─────────────────────────────────────────────────
+      modalEvent && React.createElement(EventDetailModal, {
+        event: modalEvent,
+        currentUser: currentUser,
+        onClose: function () { setModalEvent(null); },
+      })
+    );
+    } catch(err) {
+      console.error("[NexusEvents] CalendarPage crashed:", err);
+      return React.createElement("div", { style: { padding: "24px", color: "var(--red)", fontSize: "13px" } },
+        "Calendar error: " + (err && err.message || String(err))
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // EventDetailPage — route component for "/event/:id"
+  // Props received: { id, currentUser }
+  // ---------------------------------------------------------------------------
+
+  function EventDetailPage({ id, currentUser }) {
+    var [event,   setEvent]   = useState(null);
+    var [loading, setLoading] = useState(true);
+    var [notFound, setNotFound] = useState(false);
+
+    useEffect(function () {
+      extFetch("/events/" + id).then(function (data) {
+        if (data && data.event) {
+          setEvent(data.event);
+        } else {
+          setNotFound(true);
+        }
+        setLoading(false);
+      });
+    }, [id]);
+
+    if (loading) {
+      return React.createElement("div", {
+        style: { textAlign: "center", padding: "48px 0", color: "var(--t4)", fontSize: "14px" }
+      },
+        React.createElement("i", { className: "fa-solid fa-spinner fa-spin", style: { marginRight: "8px" }, "aria-hidden": "true" }),
+        "Loading…"
+      );
+    }
+
+    if (notFound || !event) {
+      return React.createElement("div", {
+        style: { textAlign: "center", padding: "48px 0", color: "var(--t4)", fontSize: "14px" }
+      }, "Event not found.");
+    }
+
+    // Render the event detail inline (not as a modal, since this is a full page)
+    return React.createElement(EventDetailModal, {
+      event: event,
+      currentUser: currentUser,
+      onClose: function () {
+        window.NexusExtensions.navigate("/ext/nexus-events");
+      },
+    });
+  }
+
 
   // ---------------------------------------------------------------------------
   // Admin panel — Stage 9
