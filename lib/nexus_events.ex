@@ -61,10 +61,13 @@ defmodule NexusEvents do
 
   @impl true
   def child_specs do
-    # RetentionJob is an Oban worker (a job module, not a process).
-    # It is scheduled via Oban.insert in on_install/1 in Stage 5.
-    # child_specs/0 is for GenServers and supervised processes only.
-    []
+    # RetentionScheduler is a GenServer that enqueues the weekly RetentionJob.
+    # Per guide §3021: recurring work belongs in child_specs/0 so it runs
+    # on every boot, not just on install.
+    # RetentionJob itself is an Oban.Worker — not a process, not listed here.
+    [
+      {NexusEvents.Workers.RetentionScheduler, []}
+    ]
   end
 
   # ---------------------------------------------------------------------------
