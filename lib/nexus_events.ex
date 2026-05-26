@@ -95,9 +95,50 @@ defmodule NexusEvents do
   # Stage 10 adds real content; the stub satisfies the loader now.
 
   @impl true
-  def handle_digest_section("upcoming_events", _period, _settings) do
-    # Stage 10: query upcoming events and return card layout items.
-    %{items: []}
+  def handle_digest_section("upcoming_events", period, _settings) do
+    import Ecto.Query
+    alias Nexus.Repo
+
+    now = DateTime.utc_now()
+
+    # Query events that start between now and the end of the digest period.
+    # This gives "events coming up in the next day/week/month" depending
+    # on the digest frequency.
+    events =
+      from(e in NexusEvents.Event,
+        where:
+          e.status   == "upcoming" and
+          e.start_at >= ^now       and
+          e.start_at <= ^period.to,
+        order_by: [asc: e.start_at],
+        limit: 10
+      )
+      |> Repo.all()
+
+    if events == [] do
+      # Empty items list causes the section to be silently dropped per guide §8.8.
+      %{items: []}
+    else
+      items =
+        Enum.map(events, fn event ->
+          start_label =
+            Calendar.strftime(event.start_at, "%b %-d, %Y · %-I:%M %p")
+
+          %{
+            label:     event.title,
+            sublabel:  start_label <> if(event.location, do: " · #{event.location}", else: ""),
+            image_url: event.image_url,
+            url:       "/ext/nexus-events/event/#{event.id}"
+          }
+        end)
+
+      %{
+        title:  "Upcoming Events — #{period.period_label}",
+        layout: "card",
+        items:  items,
+        cta:    %{label: "View all events", url: "/ext/nexus-events"}
+      }
+    end
   end
 
   def handle_digest_section(_key, _period, _settings), do: %{items: []}

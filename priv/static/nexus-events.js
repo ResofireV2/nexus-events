@@ -1950,7 +1950,10 @@
       );
     },
     onClick: function (_ref) {
-      // Stage 10: navigate to calendar
+      // _ref receives { n, navigate } per NotificationsPage.jsx line 114.
+      // Navigate to the calendar page. The event is cancelled so no detail
+      // page is needed — the calendar shows its current status.
+      window.NexusExtensions.navigate("/ext/nexus-events");
     },
   });
 
