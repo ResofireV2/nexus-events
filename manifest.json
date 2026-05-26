@@ -1,0 +1,129 @@
+{
+  "$schema": "https://YOUR-NEXUS-HOST/manifest_schema.json",
+  "manifest_version": 2,
+  "name": "Nexus Events",
+  "slug": "nexus-events",
+  "version": "1.0.0",
+  "description": "Community event scheduling with RSVP, calendar views, and post-linked event cards.",
+  "author": "ResofireV2",
+  "homepage": "https://github.com/ResofireV2/nexus-events",
+  "repository": "https://github.com/ResofireV2/nexus-events",
+  "license": "MIT",
+  "logo_url": "/ext/nexus-events/assets/logo.webp",
+  "banner_url": "/ext/nexus-events/assets/banner.webp",
+  "tags": ["events", "calendar", "community"],
+  "compatible_with": "^1.0",
+  "module": "NexusEvents",
+  "js_bundle": "nexus-events.js",
+  "capabilities": [],
+  "side_data": [],
+  "settings_schema": {
+    "rsvp_enabled": {
+      "type": "boolean",
+      "label": "Enable RSVP",
+      "default": true,
+      "description": "Allow members to RSVP to events."
+    },
+    "allow_maybe": {
+      "type": "boolean",
+      "label": "Allow 'maybe' responses",
+      "default": false,
+      "description": "Let members respond with 'maybe / interested' in addition to attending."
+    },
+    "max_rsvp": {
+      "type": "number",
+      "label": "Default RSVP cap per event",
+      "default": 0,
+      "description": "Maximum number of RSVPs per event. Set to 0 for unlimited."
+    },
+    "require_image": {
+      "type": "boolean",
+      "label": "Require cover image",
+      "default": false,
+      "description": "Require a cover image when creating an event."
+    },
+    "events_per_page": {
+      "type": "number",
+      "label": "Events per page",
+      "default": 20,
+      "description": "Number of events shown per page on the calendar."
+    },
+    "past_event_retention": {
+      "type": "select",
+      "label": "Keep past events for",
+      "default": "forever",
+      "description": "How long to keep past events in the database before automatic removal.",
+      "options": [
+        {"value": "30_days",  "label": "30 days"},
+        {"value": "90_days",  "label": "90 days"},
+        {"value": "180_days", "label": "180 days"},
+        {"value": "1_year",   "label": "1 year"},
+        {"value": "forever",  "label": "Keep forever"}
+      ]
+    }
+  },
+  "settings_tabs": [],
+  "hooks": [
+    {"event": "post_deleted", "priority": 50}
+  ],
+  "slots": ["post_footer"],
+  "routes": [
+    {"path": "/",           "title": "Events"},
+    {"path": "/event/:id",  "title": "Event"}
+  ],
+  "admin_panel": {
+    "label": "Events",
+    "icon": "fa-calendar"
+  },
+  "explore": {
+    "label": "Events",
+    "icon": "fa-calendar",
+    "path": "/"
+  },
+  "digest_sections": [
+    {
+      "key": "upcoming_events",
+      "label": "Upcoming Events",
+      "icon": "fa-calendar",
+      "enabled_by_default": true
+    }
+  ],
+  "right_widgets": [],
+  "toolbar_buttons": [
+    {
+      "id": "create-event",
+      "icon": "fa-solid fa-calendar-plus",
+      "tip": "Create an event",
+      "scope": "posts",
+      "priority": 50
+    }
+  ],
+  "profile_tabs": [],
+  "notification_types": [
+    {
+      "key": "event_cancelled",
+      "label": "Event cancelled",
+      "description": "Fires when an event you RSVPed to is cancelled.",
+      "icon": "fa-calendar-xmark",
+      "channels": ["web", "email"],
+      "default_preferences": {
+        "web": true,
+        "email": true
+      },
+      "payload_schema": {
+        "event_id":   "ID of the cancelled event",
+        "event_title": "Title of the cancelled event"
+      }
+    }
+  ],
+  "permissions": [
+    {"key": "can_view_events",      "label": "Can view events and the calendar",          "default": "everyone"},
+    {"key": "can_create_event",     "label": "Can create a new event",                    "default": "member"},
+    {"key": "can_rsvp",             "label": "Can RSVP to an event",                      "default": "member"},
+    {"key": "can_view_attendees",   "label": "Can view the attendee list for an event",   "default": "member"},
+    {"key": "can_edit_any_event",   "label": "Can edit events created by other members",  "default": "moderator"},
+    {"key": "can_cancel_event",     "label": "Can cancel an event (notifies all RSVPs)",  "default": "moderator"},
+    {"key": "can_delete_any_event", "label": "Can delete events created by other members","default": "moderator"},
+    {"key": "can_manage_events",    "label": "Can access event management controls",      "default": "moderator"}
+  ]
+}
