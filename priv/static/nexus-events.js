@@ -556,16 +556,39 @@
                 }
               }, "Cancelled")
             ),
-            React.createElement("button", {
-              onClick: onClose,
-              style: {
-                background: "none", border: "none", cursor: "pointer",
-                color: "var(--t3)", fontSize: "18px", lineHeight: 1,
-                padding: "4px", marginLeft: "12px", flexShrink: 0,
-              },
-              "aria-label": "Close",
+            React.createElement("div", {
+              style: { display: "flex", alignItems: "center", gap: "8px", flexShrink: 0, marginLeft: "12px" }
             },
-              React.createElement("i", { className: "fa-solid fa-xmark", "aria-hidden": "true" })
+              // View post button — only shown when event is linked to a post
+              event.post_id && React.createElement("a", {
+                href: "/post/" + event.post_id,
+                onClick: function (e) {
+                  e.preventDefault();
+                  window.NexusExtensions.navigate("/post/" + event.post_id);
+                  onClose();
+                },
+                style: {
+                  fontSize: "12px", padding: "5px 12px", borderRadius: "20px",
+                  background: "rgba(255,255,255,0.06)", border: "0.5px solid var(--b2)",
+                  color: "var(--t3)", cursor: "pointer", textDecoration: "none",
+                  display: "flex", alignItems: "center", gap: "5px",
+                  whiteSpace: "nowrap",
+                },
+              },
+                React.createElement("i", { className: "fa-solid fa-arrow-up-right-from-square", style: { fontSize: "10px" }, "aria-hidden": "true" }),
+                "View post"
+              ),
+              React.createElement("button", {
+                onClick: onClose,
+                style: {
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "var(--t3)", fontSize: "18px", lineHeight: 1,
+                  padding: "4px",
+                },
+                "aria-label": "Close",
+              },
+                React.createElement("i", { className: "fa-solid fa-xmark", "aria-hidden": "true" })
+              )
             )
           ),
 
