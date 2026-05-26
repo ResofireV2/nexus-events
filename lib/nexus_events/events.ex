@@ -212,40 +212,24 @@ defmodule NexusEvents.Events do
   end
 
 
+
+  
   @doc """
-  Links the most recently created unlinked event (post_id IS NULL) from
-  a given user to a newly created post. Called from the post_created hook.
-
-  This is how toolbar-button-created events get attached to their post —
-  the user creates an event in the composer, submits the post, and the
-  hook fires linking the pending event to the new post_id.
-
-  Only links if exactly one unlinked event exists for the user created
-  in the last 30 minutes — prevents stale or accidental linkage.
+  Links an event to a post by setting its post_id.
+  Called from persist_attachment/3 after a post is committed.
+  event_id arrives as a string from the JSON attachment data.
+  post_id arrives as a string from the hook payload.
   """
-  def link_pending_event(user_id, post_id) do
-    cutoff = DateTime.add(DateTime.utc_now(), -30 * 60, :second)
+  def link_event_to_post(event_id, post_id) when is_binary(event_id) do
+    event_id_int = String.to_integer(event_id)
 
-    pending =
-      from(e in Event,
-        where:
-          e.creator_user_id == ^user_id and
-          is_nil(e.post_id)            and
-          e.inserted_at >= ^cutoff,
-        order_by: [desc: e.inserted_at],
-        limit: 1
-      )
-      |> Repo.one()
+    from(e in Event, where: e.id == ^event_id_int)
+    |> Repo.update_all(set: [post_id: to_string(post_id)])
 
-    case pending do
-      nil   -> :ok
-      event ->
-        event
-        |> Ecto.Changeset.change(post_id: post_id)
-        |> Repo.update()
-        :ok
-    end
+    :ok
   end
+
+  def link_event_to_post(_event_id, _post_id), do: :ok
 
   defp retention_cutoff("30_days"),  do: DateTime.add(DateTime.utc_now(), -30,  :day)
   defp retention_cutoff("90_days"),  do: DateTime.add(DateTime.utc_now(), -90,  :day)

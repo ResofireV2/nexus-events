@@ -78,14 +78,6 @@ defmodule NexusEvents do
   # Stage 4 adds the real cleanup logic; the catch-all satisfies the loader now.
 
   @impl true
-  def handle_event("post_created", %{user_id: user_id, post_id: post_id}, _settings) do
-    # Link the most recent unlinked event from this user to the new post.
-    # This is how toolbar-button-created events get attached to their post.
-    NexusEvents.Events.link_pending_event(user_id, post_id)
-    :ok
-  end
-
-  @impl true
   def handle_event("post_deleted", %{post_id: post_id}, _settings) do
     NexusEvents.Events.delete_event_for_post(post_id)
     :ok
@@ -94,6 +86,9 @@ defmodule NexusEvents do
   # Catch-all required: any declared event without a specific clause lands here.
   def handle_event(_event, _payload, _settings), do: :ok
 
+  # ---------------------------------------------------------------------------
+  # Compose attachment persistence
+  # ---------------------------------------------------------------------------
   # ---------------------------------------------------------------------------
   # Digest sections
   # ---------------------------------------------------------------------------
@@ -150,6 +145,23 @@ defmodule NexusEvents do
   end
 
   def handle_digest_section(_key, _period, _settings), do: %{items: []}
+
+  # ---------------------------------------------------------------------------
+  # Composer attachment persistence (side_data)
+  #
+  # The toolbar button calls attach({kind: "event_attach", data: {event_id: ...}})
+  # after creating the event. Nexus dispatches the attachment here once the
+  # post is committed, giving us the post_id to link to the event.
+  # Attachment arrives with string keys per guide §8.9.
+  # ---------------------------------------------------------------------------
+
+  @impl true
+  def persist_attachment("post", post_id, %{"kind" => "event_attach", "data" => %{"event_id" => event_id}}) do
+    NexusEvents.Events.link_event_to_post(event_id, post_id)
+    :ok
+  end
+
+  def persist_attachment(_entity, _entity_id, _attachment), do: :ok
 
   # ---------------------------------------------------------------------------
   # Lifecycle

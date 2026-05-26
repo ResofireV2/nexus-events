@@ -1539,8 +1539,9 @@
   // This is necessary because onClick on a toolbar button is a plain function
   // call — not a React render context — so we cannot use React state directly.
   // Per guide §9.7: onClick receives {attach, currentUser, context}.
-  // We don't use attach() — events link by post_id set server-side after post
-  // creation, not via the side_data attach flow.
+  // After event creation, attach() queues the event_id with the in-flight
+  // composition. Nexus dispatches to persist_attachment/3 after the post
+  // is committed, linking the event to the new post_id.
   // ---------------------------------------------------------------------------
 
   function CreateEventModal({ currentUser, onClose, onCreated }) {
@@ -1930,7 +1931,19 @@
     scope: "posts",
     onClick: function (_ref) {
       var currentUser = _ref ? _ref.currentUser : null;
-      mountCreateModal({ currentUser: currentUser });
+      var attach      = _ref ? _ref.attach      : null;
+      mountCreateModal({
+        currentUser: currentUser,
+        onCreated: function (event) {
+          // attach() queues the event_id with the in-flight post composition.
+          // Nexus dispatches to persist_attachment/3 after the post is committed,
+          // which sets event.post_id to the new post's id.
+          // Per guide §9.7: attach({kind, data}) — kind must match manifest side_data.
+          if (attach) {
+            attach({ kind: "event_attach", data: { event_id: String(event.id) } });
+          }
+        },
+      });
     },
   });
 

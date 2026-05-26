@@ -20,7 +20,12 @@
   "module": "NexusEvents",
   "js_bundle": "nexus-events.js",
   "capabilities": [],
-  "side_data": [],
+  "side_data": [
+    {
+      "entity": "post",
+      "kind": "event_attach"
+    }
+  ],
   "settings_schema": {
     "rsvp_enabled": {
       "type": "boolean",
@@ -83,10 +88,6 @@
   },
   "settings_tabs": [],
   "hooks": [
-    {
-      "event": "post_created",
-      "priority": 50
-    },
     {
       "event": "post_deleted",
       "priority": 50
