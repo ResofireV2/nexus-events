@@ -363,6 +363,12 @@
   // Date utilities — no external dependencies
   // ---------------------------------------------------------------------------
 
+  // Detect mobile viewport (≤767.99px — Nexus breakpoint).
+  // Called at render time so it reacts to orientation changes.
+  function isMobile() {
+    return window.innerWidth <= 767;
+  }
+
   function startOfMonth(year, month) {
     return new Date(year, month, 1);
   }
@@ -767,27 +773,44 @@
               }
             }, cell.day),
 
-            // Event chips (up to MAX_CHIPS)
-            cellEvents.slice(0, MAX_CHIPS).map(function (ev, i) {
-              var c = chipColor(events.indexOf(ev));
-              return React.createElement("div", {
-                key: ev.id,
-                onClick: function () { onEventClick(ev); },
-                style: {
-                  fontSize: "10px", padding: "2px 6px", borderRadius: "4px",
-                  background: c.bg, color: c.color,
-                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                  cursor: "pointer",
-                  opacity: ev.status === "cancelled" ? 0.5 : 1,
-                }
-              }, ev.title);
-            }),
-
-            // Overflow indicator
-            overflow > 0 && React.createElement("div", {
-              style: { fontSize: "10px", color: "var(--t4)", cursor: "pointer" },
-              onClick: function () { onEventClick(cellEvents[MAX_CHIPS]); },
-            }, "+" + overflow + " more")
+            // Mobile: dots only. Desktop: chips with titles.
+            isMobile()
+              ? cellEvents.length > 0 && React.createElement("div", {
+                  style: { display: "flex", flexWrap: "wrap", gap: "2px", marginTop: "2px" },
+                  onClick: function () { onEventClick(cellEvents[0]); },
+                },
+                  cellEvents.slice(0, 3).map(function (ev, i) {
+                    var c = chipColor(events.indexOf(ev));
+                    return React.createElement("div", {
+                      key: ev.id,
+                      style: {
+                        width: "5px", height: "5px", borderRadius: "50%",
+                        background: c.color,
+                        opacity: ev.status === "cancelled" ? 0.4 : 1,
+                      }
+                    });
+                  })
+                )
+              : React.createElement(React.Fragment, null,
+                  cellEvents.slice(0, MAX_CHIPS).map(function (ev, i) {
+                    var c = chipColor(events.indexOf(ev));
+                    return React.createElement("div", {
+                      key: ev.id,
+                      onClick: function () { onEventClick(ev); },
+                      style: {
+                        fontSize: "10px", padding: "2px 6px", borderRadius: "4px",
+                        background: c.bg, color: c.color,
+                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                        cursor: "pointer",
+                        opacity: ev.status === "cancelled" ? 0.5 : 1,
+                      }
+                    }, ev.title);
+                  }),
+                  overflow > 0 && React.createElement("div", {
+                    style: { fontSize: "10px", color: "var(--t4)", cursor: "pointer" },
+                    onClick: function () { onEventClick(cellEvents[MAX_CHIPS]); },
+                  }, "+" + overflow + " more")
+                )
           );
         })
       )
@@ -811,6 +834,85 @@
     var CELL_H = 48;
 
     var weekEvents = eventsInWeek(events, weekStart);
+
+    // Mobile: stacked day list — the time grid is too wide for narrow viewports.
+    if (isMobile()) {
+      return React.createElement("div", {
+        style: { display: "flex", flexDirection: "column", gap: "8px", paddingBottom: "24px" }
+      },
+        days.map(function (d) {
+          var today = isToday(d);
+          var dayEvents = weekEvents.filter(function (e) {
+            return isSameDay(new Date(e.start_at), d);
+          });
+
+          return React.createElement("div", {
+            key: d.toISOString(),
+            style: {
+              border: "0.5px solid var(--b1)", borderRadius: "10px",
+              overflow: "hidden",
+              background: today ? "rgba(167,139,250,0.04)" : "var(--s1)",
+            }
+          },
+            // Day header
+            React.createElement("div", {
+              style: {
+                display: "flex", alignItems: "center", gap: "10px",
+                padding: "8px 12px",
+                borderBottom: dayEvents.length > 0 ? "0.5px solid var(--b1)" : "none",
+              }
+            },
+              React.createElement("div", {
+                style: {
+                  width: "28px", height: "28px", borderRadius: "50%",
+                  background: today ? "var(--ac)" : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }
+              },
+                React.createElement("span", {
+                  style: { fontSize: "13px", fontWeight: today ? 600 : 400,
+                           color: today ? "var(--ac-on)" : "var(--t2)" }
+                }, d.getDate())
+              ),
+              React.createElement("span", {
+                style: { fontSize: "12px", color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.5px" }
+              }, d.toLocaleDateString(undefined, { weekday: "short", month: "short" }))
+            ),
+
+            // Events for this day
+            dayEvents.map(function (ev) {
+              var c = chipColor(events.indexOf(ev));
+              return React.createElement("div", {
+                key: ev.id,
+                onClick: function () { onEventClick(ev); },
+                style: {
+                  display: "flex", alignItems: "center", gap: "10px",
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  borderTop: "0.5px solid var(--b1)",
+                  opacity: ev.status === "cancelled" ? 0.5 : 1,
+                }
+              },
+                React.createElement("div", {
+                  style: { width: "3px", alignSelf: "stretch", borderRadius: "2px",
+                           background: c.color, flexShrink: 0 }
+                }),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                  React.createElement("div", {
+                    style: { fontSize: "13px", fontWeight: 500, color: "var(--t1)",
+                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }
+                  }, ev.title),
+                  React.createElement("div", { style: { fontSize: "11px", color: "var(--t3)" } },
+                    formatTime(ev.start_at), " – ", formatTime(ev.end_at)
+                  )
+                )
+              );
+            })
+          );
+        })
+      );
+    }
 
     return React.createElement("div", {
       style: {
@@ -942,9 +1044,14 @@
     }).sort(function (a, b) { return new Date(a.start_at) - new Date(b.start_at); });
 
     return React.createElement("div", { style: { paddingBottom: "24px" } },
-      // Three mini-month grids
+      // Three mini-month grids — 3 columns on desktop, 1 column on mobile.
       React.createElement("div", {
-        style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "20px" }
+        style: {
+          display: "grid",
+          gridTemplateColumns: isMobile() ? "1fr" : "repeat(3, 1fr)",
+          gap: "12px",
+          marginBottom: "20px",
+        }
       },
         months.map(function (m) {
           var firstDay = startOfMonth(year, m).getDay();
