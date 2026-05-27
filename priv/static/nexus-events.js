@@ -1363,6 +1363,30 @@
           if (data && data.event) {
             toast("Event cancelled.");
             loadEvents(filter);
+            // Fire notifications via Nexus's intended endpoint (guide §9.12).
+            // POST /api/v1/notifications/extension for each attendee.
+            // This uses the Nexus notification pipeline correctly rather than
+            // calling Oban directly from extension Elixir code.
+            var attendeeIds = data.attendee_ids || [];
+            var token = localStorage.getItem("nexus_token");
+            attendeeIds.forEach(function (userId) {
+              fetch("/api/v1/notifications/extension", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": "Bearer " + token,
+                },
+                body: JSON.stringify({
+                  slug:           SLUG,
+                  target_user_id: userId,
+                  type:           "event_cancelled",
+                  data: {
+                    event_id:    String(data.event.id),
+                    event_title: data.event.title,
+                  },
+                }),
+              });
+            });
           } else {
             toast("Could not cancel event.", "err");
           }

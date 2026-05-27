@@ -24,7 +24,6 @@ defmodule NexusEvents.ApiRouter do
 
   import Plug.Conn
   alias Nexus.Extensions.Permissions
-  alias Nexus.Notifications
   alias NexusEvents.Events
 
   plug :match
@@ -194,26 +193,18 @@ defmodule NexusEvents.ApiRouter do
           event ->
             case Events.cancel_event(event) do
               {:ok, cancelled} ->
-                # Notify all RSVPed users. Each needs their own notification row.
-                # rsvp.user_id is stored as string; notifications.user_id is integer.
-                # payload_schema requires event_id and event_title.
+                # Return attendee user_ids so the JS bundle can fire
+                # POST /api/v1/notifications/extension for each one.
+                # This uses Nexus's intended notification path (guide §9.12)
+                # rather than calling Oban directly which fails outside
+                # the Nexus application context.
                 attendees = Events.list_attendees(cancelled.id)
+                attendee_ids = Enum.map(attendees, fn %{user_id: uid} -> uid end)
 
-                Task.start(fn ->
-                  Enum.each(attendees, fn %{user_id: uid} ->
-                    Notifications.notify_extension(
-                      @slug,
-                      "event_cancelled",
-                      user_id: String.to_integer(uid),
-                      data: %{
-                        "event_id"    => to_string(cancelled.id),
-                        "event_title" => cancelled.title
-                      }
-                    )
-                  end)
-                end)
-
-                send_resp(conn, 200, Jason.encode!(%{event: event_json(cancelled)}))
+                send_resp(conn, 200, Jason.encode!(%{
+                  event:        event_json(cancelled),
+                  attendee_ids: attendee_ids
+                }))
 
               {:error, changeset} ->
                 send_resp(conn, 422, Jason.encode!(%{errors: format_errors(changeset)}))
@@ -297,6 +288,13 @@ defmodule NexusEvents.ApiRouter do
                 else
                   response = conn.body_params["response"] || "attending"
 
+                  # Enforce allow_maybe setting.
+                  allow_maybe = get_in(ext, [Access.key(:settings), "allow_maybe"])
+                  allow_maybe = if is_nil(allow_maybe), do: false, else: allow_maybe
+
+                  if response == "maybe" and not allow_maybe do
+                    send_resp(conn, 422, Jason.encode!(%{error: "Maybe responses are not enabled"}))
+                  else
                   case Events.upsert_rsvp(event.id, to_string(user.id), response) do
                     {:ok, rsvp} ->
                       counts = Events.rsvp_counts(event.id)
@@ -307,6 +305,7 @@ defmodule NexusEvents.ApiRouter do
 
                     {:error, changeset} ->
                       send_resp(conn, 422, Jason.encode!(%{errors: format_errors(changeset)}))
+                  end
                   end
                 end
               end
