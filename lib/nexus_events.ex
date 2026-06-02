@@ -36,8 +36,8 @@ defmodule NexusEvents do
   @impl true
   def migrations do
     [
-      NexusEvents.Migrations.V20260525000001CreateNexusEvents,
-      NexusEvents.Migrations.V20260525000002CreateNexusEventRsvps
+      NexusEvents.Migrations.V1CreateNexusEvents,
+      NexusEvents.Migrations.V2CreateNexusEventRsvps
     ]
   end
 
