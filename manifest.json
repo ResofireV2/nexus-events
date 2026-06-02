@@ -3,7 +3,7 @@
   "manifest_version": 2,
   "name": "Nexus Events",
   "slug": "nexus-events",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Community event scheduling with RSVP, calendar views, and post-linked event cards.",
   "author": "ResofireV2",
   "homepage": "https://github.com/ResofireV2/nexus-events",
@@ -94,7 +94,8 @@
     }
   ],
   "slots": [
-    "post_footer"
+    "post_footer",
+    "compose_attachments"
   ],
   "routes": [
     {

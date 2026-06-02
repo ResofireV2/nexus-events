@@ -2061,8 +2061,74 @@
   }
 
 
+
+  // ---------------------------------------------------------------------------
+  // ComposeAttachmentsPanel — compose_attachments slot component.
+  // Receives { attachments, setAttachments } from Nexus. Filters to
+  // kind === "event_attach" and renders removable chips for each linked event.
+  // ---------------------------------------------------------------------------
+
+  function ComposeAttachmentsPanel({ attachments, setAttachments }) {
+    var linked = (attachments || []).filter(function (a) { return a.kind === "event_attach"; });
+    if (linked.length === 0) return null;
+
+    function remove(event_id) {
+      setAttachments(function (prev) {
+        return prev.filter(function (a) {
+          return !(a.kind === "event_attach" && a.data.event_id === event_id);
+        });
+      });
+    }
+
+    return React.createElement("div", { style: { padding: "12px 0 4px" } },
+      React.createElement("div", {
+        style: { fontSize: "11px", fontWeight: 600, color: "var(--t4)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "8px" }
+      },
+        React.createElement("i", { className: "fa-solid fa-calendar", style: { marginRight: "6px" }, "aria-hidden": "true" }),
+        linked.length === 1 ? "Linked event" : "Linked events"
+      ),
+      React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "8px" } },
+        linked.map(function (a) {
+          return React.createElement("div", {
+            key:   a.data.event_id,
+            style: { display: "flex", alignItems: "center", gap: "8px", background: "var(--s2)", border: "0.5px solid var(--b1)", borderRadius: "8px", padding: "6px 10px 6px 8px", maxWidth: "320px" }
+          },
+            a.data.image_url
+              ? React.createElement("img", {
+                  src:   a.data.image_url,
+                  alt:   a.data.title,
+                  style: { width: "40px", height: "40px", borderRadius: "4px", objectFit: "cover", flexShrink: 0 }
+                })
+              : React.createElement("div", {
+                  style: { width: "40px", height: "40px", borderRadius: "4px", background: "rgba(255,255,255,.06)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }
+                },
+                  React.createElement("i", { className: "fa-solid fa-calendar", style: { color: "var(--t4)", fontSize: "16px" }, "aria-hidden": "true" })
+                ),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+              React.createElement("div", {
+                style: { fontSize: "13px", fontWeight: 500, color: "var(--t1)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+              }, a.data.title || "Event #" + a.data.event_id),
+              a.data.start_at && React.createElement("div", {
+                style: { fontSize: "11px", color: "var(--t4)", marginTop: "2px" }
+              },
+                React.createElement("i", { className: "fa-regular fa-clock", style: { marginRight: "4px" }, "aria-hidden": "true" }),
+                a.data.start_at
+              )
+            ),
+            React.createElement("button", {
+              onClick: function () { remove(a.data.event_id); },
+              title:   "Remove",
+              style:   { background: "none", border: "none", color: "var(--t4)", cursor: "pointer", fontSize: "12px", padding: "0 0 0 4px", lineHeight: 1, flexShrink: 0 }
+            }, "\u2715")
+          );
+        })
+      )
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Registrations
+
   // ---------------------------------------------------------------------------
 
   NE.registerRoute(SLUG, "/", CalendarPage, { title: "Events" });
@@ -2072,6 +2138,13 @@
     slug:      SLUG,
     slot:      "post_footer",
     component: PostFooterCard,
+    priority:  50,
+  });
+
+  NE.registerSlot({
+    slug:      SLUG,
+    slot:      "compose_attachments",
+    component: ComposeAttachmentsPanel,
     priority:  50,
   });
 
@@ -2105,7 +2178,7 @@
           // which sets event.post_id to the new post's id.
           // Per guide §9.7: attach({kind, data}) — kind must match manifest side_data.
           if (attach) {
-            attach({ kind: "event_attach", data: { event_id: String(event.id) } });
+            attach({ kind: "event_attach", data: { event_id: String(event.id), title: event.title, start_at: event.start_at, image_url: event.image_url ?? null } });
           }
         },
       });
