@@ -458,7 +458,7 @@
 
   // Chip color by event index for visual variety
   var CHIP_COLORS = [
-    { bg: "rgba(167,139,250,0.18)", color: "var(--ac-text)" },
+    { bg: "var(--ac-bg)", color: "var(--ac-text)" },
     { bg: "rgba(52,211,153,0.15)",  color: "var(--green)" },
     { bg: "rgba(251,191,36,0.13)",  color: "#fbbf24" },
     { bg: "rgba(96,165,250,0.15)",  color: "#60a5fa" },
@@ -851,7 +851,7 @@
             style: {
               border: "0.5px solid var(--b1)", borderRadius: "10px",
               overflow: "hidden",
-              background: today ? "rgba(167,139,250,0.04)" : "var(--s1)",
+              background: today ? "var(--ac-bg)" : "var(--s1)",
             }
           },
             // Day header
@@ -1314,7 +1314,7 @@
                 style: {
                   fontSize: "11px", padding: "5px 12px", borderRadius: "7px",
                   border: "none", fontFamily: "inherit", cursor: "pointer",
-                  background: active ? "rgba(167,139,250,0.18)" : "transparent",
+                  background: active ? "var(--ac-bg)" : "transparent",
                   color: active ? "var(--ac-text)" : "var(--t3)",
                   transition: "all 0.1s",
                 }
