@@ -58,6 +58,7 @@
     const [state, setState] = useState("loading"); // "loading" | "empty" | "ready" | "error"
     const [event, setEvent] = useState(null);
     const [counts, setCounts] = useState({ attending: 0, maybe: 0, total: 0 });
+    const [allowMaybe, setAllowMaybe] = useState(false);
     const [userRsvp, setUserRsvp] = useState(null); // null | { response: "attending"|"maybe" }
     const [rsvpLoading, setRsvpLoading] = useState(false);
 
@@ -76,6 +77,7 @@
           setEvent(data.event);
           setCounts(data.rsvp_counts || { attending: 0, maybe: 0, total: 0 });
           setUserRsvp(data.user_rsvp || null);
+          setAllowMaybe(data.allow_maybe || false);
           setState("ready");
         })
         .catch(function () {
@@ -324,17 +326,10 @@
                     style: { fontSize: "13px", padding: "6px 16px" },
                   }, rsvpLoading ? "…" : "Attend"),
 
-                  // "Maybe" button only shown if allow_maybe is enabled.
-                  // We check the /permissions endpoint response cached in the
-                  // component — but allow_maybe is a setting, not a permission.
-                  // We read it from the event object which doesn't carry settings.
-                  // Simplest approach: always show Maybe; the API will reject if
-                  // allow_maybe=false and the changeset validates response.
-                  // Actually: the API accepts "maybe" regardless of setting —
-                  // settings gate is in the admin UI only for now. Stage 9 wires
-                  // the setting check properly from the CalendarPage fetch.
-                  // For the post_footer card, we show both buttons always.
-                  React.createElement("button", {
+                  // Maybe button — only shown when allow_maybe setting is enabled.
+                  // allow_maybe comes from the /posts/:id/event response which
+                  // reads ext.settings so it always reflects the current admin setting.
+                  allowMaybe && React.createElement("button", {
                     className: "btn-ghost",
                     onClick: function () { handleRsvp("maybe"); },
                     disabled: rsvpLoading,
@@ -473,8 +468,9 @@
   // ---------------------------------------------------------------------------
 
   function EventDetailModal({ event, onClose, currentUser }) {
-    const [counts, setCounts]       = useState(null);
-    const [userRsvp, setUserRsvp]   = useState(null);
+    const [counts, setCounts]         = useState(null);
+    const [userRsvp, setUserRsvp]     = useState(null);
+    const [allowMaybe, setAllowMaybe] = useState(false);
     const [rsvpLoading, setRsvpLoading] = useState(false);
     const { toast } = window.NexusComponents;
 
@@ -484,6 +480,7 @@
         .then(function (data) {
           if (data && data.rsvp_counts) setCounts(data.rsvp_counts);
           if (data && data.user_rsvp)   setUserRsvp(data.user_rsvp);
+          if (data)                     setAllowMaybe(data.allow_maybe || false);
         });
     }, [event && event.id]);
 
@@ -672,7 +669,7 @@
                       onClick: function () { handleRsvp("attending"); },
                       disabled: rsvpLoading,
                     }, rsvpLoading ? "…" : "Attend"),
-                    React.createElement("button", {
+                    allowMaybe && React.createElement("button", {
                       className: "btn-ghost",
                       onClick: function () { handleRsvp("maybe"); },
                       disabled: rsvpLoading,

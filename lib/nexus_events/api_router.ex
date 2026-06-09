@@ -103,10 +103,14 @@ defmodule NexusEvents.ApiRouter do
                 user -> Events.get_rsvp(event.id, to_string(user.id))
               end
 
+            ext         = Nexus.Extensions.get_extension_by_slug(@slug)
+            allow_maybe = get_in(ext, [Access.key(:settings), "allow_maybe"]) || false
+
             send_resp(conn, 200, Jason.encode!(%{
-              event:      event_json(event),
+              event:       event_json(event),
               rsvp_counts: counts,
-              user_rsvp:  user_rsvp && %{response: user_rsvp.response}
+              user_rsvp:   user_rsvp && %{response: user_rsvp.response},
+              allow_maybe: allow_maybe
             }))
         end
     end
@@ -235,10 +239,14 @@ defmodule NexusEvents.ApiRouter do
                 user -> Events.get_rsvp(event.id, to_string(user.id))
               end
 
+            ext         = Nexus.Extensions.get_extension_by_slug(@slug)
+            allow_maybe = get_in(ext, [Access.key(:settings), "allow_maybe"]) || false
+
             send_resp(conn, 200, Jason.encode!(%{
               event:       event_json(event),
               rsvp_counts: counts,
-              user_rsvp:   user_rsvp && %{response: user_rsvp.response}
+              user_rsvp:   user_rsvp && %{response: user_rsvp.response},
+              allow_maybe: allow_maybe
             }))
         end
     end
