@@ -527,7 +527,7 @@
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: "16px",
       },
-      onClick: function (e) { if (e.target === e.currentTarget) onClose(); },
+      onMouseDown: function (e) { if (e.target === e.currentTarget) onClose(); },
     },
       React.createElement("div", {
         style: {
@@ -1830,7 +1830,7 @@
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: "16px",
       },
-      onClick: function (e) { if (e.target === e.currentTarget) onClose(); },
+      onMouseDown: function (e) { if (e.target === e.currentTarget) onClose(); },
     },
       React.createElement("div", {
         style: {
